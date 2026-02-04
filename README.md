@@ -23,11 +23,11 @@ Single‑page Melexis.IO demo application that runs in your browser using the We
   - `*IDN?`, `:SYST:INFO`, `:SYST:LOG`, `:SYST:HELP`, `*RST`
   - Reset flow: waits for `*RESET*` and then `(OK)>`, disconnects, waits ~5s, and auto‑reconnects to the same VID:PID
 - Log viewer with colors (dark theme):
-  - Local echo (TX): bright blue (#4db2ff)
-  - Device responses (RX): light gray
-  - `(OK)>` prompt: mint green (#59ffb0)
-  - Non‑OK prompts: soft red
-  - Errors: vivid red
+  - Local echo (TX): themed blue
+  - Device responses (RX): dark text
+  - `(OK)>` prompt: electric green
+  - Non‑OK prompts: red
+  - Errors: deep red
     - Status line shows USB VID:PID (hex), serial (if available) and the first *IDN? response line (device description). (OS COM port name/path isn't exposed by Web Serial.)
 - Clear / Save... buttons in Terminal; input behavior options relocated to Settings tab and persisted.
 - Command history:
@@ -57,17 +57,27 @@ Single‑page Melexis.IO demo application that runs in your browser using the We
 
 Serve the folder with any static web server and open in Chrome/Edge.
 
-PowerShell (Python 3):
+Windows (PowerShell):
 
 ```powershell
 python -m http.server 8000
 ```
 
-Then visit: http://localhost:8000/
-
-Node.js (npx serve):
+Node.js (PowerShell):
 
 ```powershell
+npx serve -l 8000
+```
+
+Linux/macOS (bash):
+
+```bash
+python3 -m http.server 8000
+```
+
+Node.js (bash):
+
+```bash
 npx serve -l 8000
 ```
 
@@ -96,9 +106,14 @@ Tip: If your server serves directory indexes, `index.html` at the project root w
 - “Failed to connect” or no ports listed → Ensure your device driver is installed and the port isn’t in use by another app.
 - No output / device doesn’t respond → Check baud/format and the EOL option (many devices require LF or CR).
 - Opened from file system and Connect is disabled → Serve over HTTPS or `http://localhost`.
-- Recording button disabled → Recording is only available when Continuous mode is active (device is streaming frames).
+ 
 
 ## Privacy & data
+
+- No telemetry or analytics; everything runs client‑side.
+- Command history is stored locally in a cookie for this site.
+- Settings (connection + input options) are stored in `localStorage`.
+- Serial communication is between your browser and the device; the server only serves static files.
 
 ## Layout & UI specifics
 
@@ -106,36 +121,18 @@ Tip: If your server serves directory indexes, `index.html` at the project root w
 |--------|-------------|
 | Connection controls | Top fieldset with only Connect / Disconnect + status line. |
 | Tabs | Terminal, Settings |
-| Log | Monospaced scrollback (`#log`) at fixed height (50vh; capped by viewport calc). |
+| Log | Monospaced scrollback (`#log`) at fixed height (~45vh; capped by viewport calc). |
 | Input row | Single compact row: Clear, Save..., TX field, Send (behavior options moved to Settings). |
 | Sidebar (right) | Quick command buttons + history list + clear history. |
-|  |  |
+ 
 
-## Android
-
-See `android/README.md` for the native USB CDC (ACM) prototype, build instructions, limitations, and future task list.
+ 
 
 On very narrow screens, wrapping will stack controls; the TX + Send pair stays together while secondary controls wrap.
 
 ## Theming & customization
 
-Theme is implemented with CSS custom properties near the top of `index.html`:
-
-```css
-:root {
-  --theme-green: #1066CC; /* primary theme accent (blue) */
-  --bg-green: #133D73;    /* lighter navy background */
-  --text-on-green: #E9F2FF;
-  --panel-bg: rgba(255,255,255,0.06);
-  --panel-border: rgba(255,255,255,0.18);
-}
-```
-
-You can adjust:
-- Background: change `--bg-green`.
-- Accent color: update `--theme-green` (used in prompts, some buttons before overrides).
-- Log height: edit `#log { height: 50vh; ... }`.
-- Prompt colors: modify `.log-okprompt`, `.log-badprompt`, `.log-error`.
+Theme and palette are defined via CSS variables in `styles/melexis.css`. Update button, prompt, and panel colors by editing those variables. Prompt colors are controlled by `.log-okprompt`, `.log-badprompt`, `.log-error`. Log height can be adjusted in `index.html` under the `#log` style.
 
 
 ## Connection behavior
@@ -155,8 +152,7 @@ You can adjust:
 
 - Light/dark theme toggle
 - Search/filter within the log
- - 
-<!-- Removed People Detection related future items -->
+ 
 
 Contributions or suggestions welcome via issues / pull requests.
 
