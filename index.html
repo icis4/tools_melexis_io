@@ -251,15 +251,6 @@
       justify-content: center;
       padding: 5px;
     }
-
-    #irRunning {
-      width:10px;
-      height:10px;
-      border-radius:50%;
-      background:var(--mx-steel-grey);
-      box-shadow:0 0 4px #0D1A2B;
-      transition:background-color .2s, box-shadow .2s;
-    }
  
   </style>
 
@@ -389,7 +380,7 @@
                 <legend class="float-none w-auto px-2 small mb-0">Actions</legend>
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
                   <button id="resetSerialSettings" class="btn btn-primary btn-sm">Reset to defaults</button>
-                  <button id="exportSettings" class="btn btn-primary btn-sm" title="Download settings bundle (commands + parameters + IR)">Export settings</button>
+                  <button id="exportSettings" class="btn btn-primary btn-sm" title="Download settings bundle (commands + parameters)">Export settings</button>
                   <button id="importSettings" class="btn btn-primary btn-sm" title="Import settings bundle JSON">Import settings</button>
                   <button id="eepromSave" class="btn btn-primary btn-sm" title="Save current settings to device EEPROM" disabled>Save to EEPROM</button>
                   <button id="eepromLoad" class="btn btn-primary btn-sm" title="Load settings from device EEPROM" disabled>Load from EEPROM</button>
@@ -599,9 +590,6 @@
         applyInputOptions({ ...INPUT_DEFAULTS });
         saveInputOptions();
       });
-      // Start with IR controls disabled until connected
-      const irRead = $('irRead'); if (irRead) irRead.disabled = true;
-      const irCont = $('irContinuous'); if (irCont) irCont.disabled = true;
       const expBtn = $('exportSettings');
       if (expBtn) expBtn.addEventListener('click', exportSettingsJson);
       const impBtn = $('importSettings');
@@ -689,7 +677,7 @@
       }
     }
 
-    /* ===== Settings Export / Import (commands + connection + IR + input options) ===== */
+    /* ===== Settings Export / Import (commands + connection + input options) ===== */
     function exportSettingsJson() {
       const payload = {
         type: 'melexis.io-settings',
@@ -698,7 +686,6 @@
         history: [...history],
         historyCount: history.length,
         serialSettings: currentSerialSettings(),
-        ir: { autoScale: irAutoScale, min: irManualMin, max: irManualMax, scale: irScale },
         input: {
           eol: $('eol') ? $('eol').value : '',
           echo: $('echo') ? $('echo').checked : false,
@@ -737,35 +724,11 @@
               persistAndDisplay();
             } catch {}
           }
-          if (obj.ir && typeof obj.ir === 'object') {
-            if (obj.ir.autoScale !== undefined || obj.ir.min !== undefined || obj.ir.max !== undefined || obj.ir.scale !== undefined) {
-              // New format (v5)
-              if (typeof obj.ir.autoScale === 'boolean') irAutoScale = obj.ir.autoScale;
-              if (typeof obj.ir.min === 'number') irManualMin = obj.ir.min;
-              if (typeof obj.ir.max === 'number') irManualMax = obj.ir.max;
-              if (obj.ir.scale === 1 || obj.ir.scale === 2 || obj.ir.scale === 4) irScale = obj.ir.scale;
-              try {
-                const autoCb = $('irAutoScale'); if (autoCb) autoCb.checked = irAutoScale;
-                const minEl = $('irMinInput'); if (minEl) minEl.value = (isNaN(irManualMin)?IR_MIN:irManualMin).toFixed(2);
-                const maxEl = $('irMaxInput'); if (maxEl) maxEl.value = (isNaN(irManualMax)?IR_MAX:irManualMax).toFixed(2);
-                const sel = $('irScaleSelect'); if (sel) sel.value = String(irScale);
-                if (typeof updateIrScaleInputsEnabled === 'function') updateIrScaleInputsEnabled();
-              } catch {}
-              try { if (typeof saveIrSettings === 'function') saveIrSettings(); } catch {}
-              if (irInitialized) renderIr();
-            } else if (obj.ir.scale === 1 || obj.ir.scale === 2 || obj.ir.scale === 4) {
-              // Legacy (v4) where only scale is present
-              irScale = obj.ir.scale;
-              const sel = $('irScaleSelect'); if (sel) sel.value = String(irScale);
-              try { if (typeof saveIrSettings === 'function') saveIrSettings(); } catch {}
-              if (irInitialized) renderIr();
-            }
-          }
           if (obj.input && typeof obj.input === 'object') {
             applyInputOptions(obj.input);
             saveInputOptions();
           }
-          alert('Imported settings. Commands: ' + history.length + (obj.serialSettings ? ', connection parameters applied' : '') + (obj.ir ? ', IR scale applied' : ''));
+          alert('Imported settings. Commands: ' + history.length + (obj.serialSettings ? ', connection parameters applied' : '') + (obj.input ? ', input options applied' : ''));
         } catch (err) {
           console.error('Import failed', err);
           alert('Failed to import: ' + err.message);
@@ -864,8 +827,6 @@
           _rxLineBuffer = '';
           // notify any line waiters with the raw line (without trailing EOL)
           try { _notifyLineWaiters(lineBody); } catch {}
-          try { maybeHandleIrModeLine(lineBody); } catch {}
-          try { maybeHandleIrContinuousFrame(lineBody); } catch {}
           if (awaitingIdnFirstLine) {
             const body = lineBody.trim();
             if (body && body.toLowerCase() !== '*idn?' && !/^\(.*\)>$/.test(body)) {
@@ -896,31 +857,6 @@
       $('cmd-rst').disabled = !enabled;
       const es = $('eepromSave'); if (es) es.disabled = !enabled;
       const elb = $('eepromLoad'); if (elb) elb.disabled = !enabled;
-      // IR tab controls follow connection state
-      const irCont = $('irContinuous');
-      const irContActive = irCont && irCont.getAttribute('data-active') === '1';
-      const irRead = $('irRead'); if (irRead) irRead.disabled = !enabled || !!irContActive;
-      if (irCont) {
-        irCont.disabled = !enabled;
-        if (!enabled) {
-          // If disabling while continuous is active, stop it and reset UI.
-          // This relies on IR script having initialized; if not, these DOM ops are harmless.
-          if (irCont.getAttribute('data-active') === '1') {
-            irCont.setAttribute('data-active','0');
-            irCont.classList.remove('btn-success');
-            irCont.classList.add('btn-outline-secondary');
-          }
-          // Clear any running timer if available (guarded in try in case IR section not parsed yet)
-          try { if (irContinuousTimer) { clearInterval(irContinuousTimer); irContinuousTimer = null; } } catch {}
-          try { refreshIrRunningIndicator(); } catch {}
-          // Stop and disable recording controls if disconnected
-          try { if (irRec && irRec.active) stopIrRecording(); } catch {}
-          const recStart = $('irRecStart'); if (recStart) recStart.disabled = true;
-          const recStop = $('irRecStop'); if (recStop) recStop.disabled = true;
-        }
-      }
-      // When connected, sync recording buttons state with continuous
-      try { updateIrRecordingButtons(); } catch {}
       
     }
 
@@ -1264,27 +1200,7 @@
       });
     }
 
-    function parseMvLineToFrame(line) {
-      // Expect: mv:XX:DDD:fp,fp,fp,... (769 floats). Ignore first float; use next 768 floats for 32x24 grid.
-      // Be tolerant of wrapping quotes and whitespace.
-      let s = (line || '').trim();
-      if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
-        s = s.slice(1, -1);
-      }
-      const m = s.match(/^mv:([0-9A-Fa-f]{2}):([0-9]+):(.+)$/);
-      if (!m) throw new Error('Bad mv line format');
-      const hexCode = m[1];
-      const timestampMs = parseInt(m[2], 10);
-      const csv = m[3];
-      const parts = csv.split(',');
-      if (parts.length < 769) throw new Error('Expected 769 floats, got ' + parts.length);
-      const out = new Float32Array(IR_ROWS * IR_COLS);
-      for (let i = 0; i < IR_ROWS * IR_COLS; i++) {
-        const v = parseFloat(parts[i + 1]); // skip first value
-        out[i] = isNaN(v) ? 0 : v;
-      }
-      return { codeHex: hexCode, timestampMs, frame: out };
-    }
+    
 
     async function sendRaw(text) {
       if (!writer) { setStatus('Not connected'); throw new Error('Not connected'); }
